@@ -4,7 +4,7 @@
 # ---------------------------------------------------------
 
 # ---- 1️⃣  MP3 URL (replace with your own) ----
-$mp3 = "https://github.com/gogames32/soundkeynote/blob/main/sound.mp3"
+$mp3 = "https://github.com/gogames32/soundkeynote/raw/refs/heads/main/sound.mp3"
 
 # ---- 2️⃣  Load Windows Audio API (same as before) ----
 Add-Type -AssemblyName System.Windows.Forms
@@ -36,4 +36,5 @@ while ($true) {
         $player.controls.play()
     }
     Start-Sleep -Milliseconds 80
+
 }
