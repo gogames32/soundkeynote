@@ -1,14 +1,15 @@
 # ---------------------------------------------------------
-# listener.ps1 – Global keyboard + mouse hook → force volume 100% → play MP3
+# listener.ps1 – Global hook for keyboard + left/right mouse click
 # ---------------------------------------------------------
 
 # ---------------------------------------------------------
-# 1️⃣  URL of the sound you want to hear on every input event
+# 1️⃣  URL of the MP3 that will be played on every event
 # ---------------------------------------------------------
-$mp3Url = "https://github.com/gogames32/soundkeynote/raw/refs/heads/main/sound.mp3"   # <-- edit
+$mp3Url = "https://github.com/gogames32/soundkeynote/raw/refs/heads/main/sound.mp3"
+# <-- EDIT: put your actual raw‑github URL for sound.mp3 here
 
 # ---------------------------------------------------------
-# 2️⃣  Load the Windows Audio API (same code you already used)
+# 2️⃣  Load the Windows Audio API (same code you used before)
 # ---------------------------------------------------------
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @"
@@ -47,69 +48,80 @@ $player = New-Object -ComObject WMPlayer.OCX
 $player.settings.volume = 100   # keep WMPlayer’s internal volume at max
 
 # ---------------------------------------------------------
-# 4️⃣  Hook helper – C# class compiled on‑the‑fly inside PowerShell
+# 4️⃣  C# low‑level hook class (keyboard + mouse)
 # ---------------------------------------------------------
 Add-Type -Language CSharp -TypeDefinition @"
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+
 public class Hook {
-    // Delegate for hook callbacks
+    // Delegate signature for the hook callback
     public delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
-    // Import needed Win32 functions
+
+    // Win32 API imports
     [DllImport("user32.dll", SetLastError=true)]
-    public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelProc lpfn, IntPtr hMod, uint dwThreadId);
+    public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelProc lpfn,
+                                                IntPtr hMod, uint dwThreadId);
     [DllImport("user32.dll", SetLastError=true)]
     public static extern bool UnhookWindowsHookEx(IntPtr hhk);
     [DllImport("user32.dll")]
-    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-    // Constants
+    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode,
+                                               IntPtr wParam, IntPtr lParam);
+
+    // Hook IDs
     public const int WH_KEYBOARD_LL = 13;
     public const int WH_MOUSE_LL    = 14;
+
+    // Messages we care about
     public const int WM_KEYDOWN    = 0x0100;
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_RBUTTONDOWN = 0x0204;
-    // Hook handles
-    public static IntPtr kHook = IntPtr.Zero;
-    public static IntPtr mHook = IntPtr.Zero;
-    // Callback for both keyboard and mouse
+
+    // Handles for the installed hooks
+    private static IntPtr _kbdHook = IntPtr.Zero;
+    private static IntPtr _mouseHook = IntPtr.Zero;
+
+    // The callback that will be called for EVERY key or mouse click
     public static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam) {
         if (nCode >= 0) {
             int msg = wParam.ToInt32();
             if (msg == WM_KEYDOWN || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) {
-                // Force volume to 100%
+                // 1️⃣ Force master volume to 100 %
                 Audio.SetVolume(1.0f);
-                // Play (or restart) the MP3 from the URL
+                // 2️⃣ Play (or restart) the MP3 from the URL
                 $player.URL = $mp3Url;
                 $player.controls.play();
             }
         }
-        return CallNextHookEx(kHook, nCode, wParam, lParam);
+        // Pass the event to the next hook in the chain
+        return CallNextHookEx(_kbdHook, nCode, wParam, lParam);
     }
-    // Install both hooks
+
+    // Install both hooks (keyboard + mouse)
     public static void Install() {
         LowLevelProc proc = HookCallback;
-        kHook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, IntPtr.Zero, 0);
-        mHook = SetWindowsHookEx(WH_MOUSE_LL,    proc, IntPtr.Zero, 0);
+        _kbdHook   = SetWindowsHookEx(WH_KEYBOARD_LL, proc, IntPtr.Zero, 0);
+        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL,    proc, IntPtr.Zero, 0);
     }
-    // Remove hooks (cleanup)
+
+    // Remove the hooks (optional – called when you stop the script)
     public static void Uninstall() {
-        if (kHook != IntPtr.Zero) UnhookWindowsHookEx(kHook);
-        if (mHook != IntPtr.Zero) UnhookWindowsHookEx(mHook);
+        if (_kbdHook   != IntPtr.Zero) UnhookWindowsHookEx(_kbdHook);
+        if (_mouseHook != IntPtr.Zero) UnhookWindowsHookEx(_mouseHook);
     }
 }
 "@
 
 # ---------------------------------------------------------
-# 5️⃣  Install hooks – the script now runs forever
+# 5️⃣  Install the hooks and keep the process alive
 # ---------------------------------------------------------
 [Hook]::Install()
-Write-Host "Hook installed – every key press or left/right mouse click will force volume 100% and play the MP3."
+Write-Host "Hook installed – every key press, left‑click, or right‑click will force volume to 100 % and play the MP3."
 
-# Keep the script alive until the user closes the PowerShell window (or kills the process)
+# The script must stay alive; a simple endless sleep loop does the job.
 while ($true) { Start-Sleep -Seconds 5 }
 
 # ---------------------------------------------------------
-# 6️⃣  Cleanup (never reached unless you stop the script manually)
+# 6️⃣  (Optional) Clean‑up – never reached unless you break out of the loop
 # ---------------------------------------------------------
 [Hook]::Uninstall()
